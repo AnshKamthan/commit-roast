@@ -2,6 +2,8 @@
 
 Your git log knows things. The 3am commits. The four `fix`es in a row. The commit called `final final` and the revert of it two hours later.
 
+> **Why this exists:** I was bored at 12:30am, didn't want to study, and wanted to build something useless. It's a toy, built for fun, and an excuse to poke at how MCP servers, `git log`, and Python packaging actually work. Every commit has a matching entry in [LEARNING.md](LEARNING.md) with the concept behind it.
+
 `commit-roast` digs through a repo's history and roasts it. It works two ways:
 
 - **Offline CLI.** Rule-based roasts, no LLM, no network. Runs anywhere `git` does.
