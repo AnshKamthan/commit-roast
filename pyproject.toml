@@ -1,0 +1,22 @@
+[project]
+name = "commit-roast"
+version = "0.1.0"
+description = "Roast a git repo's commit history. Offline CLI, or an MCP server so your AI assistant can do it."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Ansh Kamthan" }]
+requires-python = ">=3.11"
+dependencies = ["mcp>=2.3", "pydantic>=2"]
+
+[project.scripts]
+commit-roast = "commit_roast.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
