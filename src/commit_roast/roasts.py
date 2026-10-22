@@ -256,3 +256,115 @@ def _sparkline(buckets: list[int]) -> str:
     bars = " ▁▂▃▄▅▆▇█"
     top = max(buckets) or 1
     return "".join(bars[round(b / top * 8)] for b in buckets)
+
+
+# Roast battle: `--vs alice bob`. Crime score is night-owl % + lazy-message %; higher score loses.
+# Fewer than MIN_BATTLE_COMMITS is a forfeit: one 2am commit is 100% night owl, and that's not evidence.
+# Templates are str.format strings over the loser's stats fields plus `loser` and `winner` (author names)
+# and `commits` ("1 commit", "3 commits").
+MIN_BATTLE_COMMITS = 5
+BATTLE: dict[Spice, list[str]] = {
+    "gentle": [
+        "{loser} loses, but gently. {lazy_message_pct}% lazy messages is a habit, not a personality. Yet.",
+        "{winner} takes it. {loser}, {night_owl_pct}% of your commits were after midnight. Go to bed, friend.",
+    ],
+    "medium": [
+        "{loser} loses. {lazy_message_pct}% lazy messages. {winner} didn't even have to try.",
+        "{loser} loses. {night_owl_pct}% after midnight and it still wasn't enough to beat {winner}.",
+    ],
+    "brutal": [
+        "{loser} loses. {lazy_message_pct}% lazy messages. {winner} should invoice you for code review.",
+        "{loser} loses. {night_owl_pct}% of commits after midnight. {winner} was asleep and still won.",
+    ],
+}
+# One side has fewer than MIN_BATTLE_COMMITS. `loser` is the one who barely showed up.
+BATTLE_FORFEIT: dict[Spice, list[str]] = {
+    "gentle": ["{loser} has {commits}. Not enough to judge, so {winner} wins by forfeit."],
+    "medium": [
+        "{loser} has {commits}. That's not a record, that's an alibi. {winner} wins by forfeit.",
+        "{loser} barely showed up ({commits}). {winner} wins by forfeit, which still counts.",
+    ],
+    "brutal": ["{loser} has {commits}. Can't lose a roast battle if you never write code. Loses anyway."],
+}
+# Both sides have fewer than MIN_BATTLE_COMMITS (but not both zero).
+BATTLE_NO_CONTEST: dict[Spice, list[str]] = {
+    "gentle": ["{winner} and {loser} don't have enough commits between them to call it. Come back later."],
+    "medium": ["{winner} and {loser}: not enough commits for a verdict. A roast battle needs evidence."],
+    "brutal": ["{winner} and {loser} brought a handful of commits to a roast battle. No contest. Both lose."],
+}
+BATTLE_TIE: dict[Spice, list[str]] = {
+    "gentle": ["{winner} and {loser} are perfectly tied. Friendship wins."],
+    "medium": ["{winner} and {loser} are dead even. Equally guilty. Pair-program your way out of it."],
+    "brutal": ["{winner} and {loser} are tied. Not a battle, a matching set of bad habits."],
+}
+
+
+def crime_score(s: RepoStats) -> float:
+    return s.night_owl_pct + s.lazy_message_pct
+
+
+def battle_loser(a: RepoStats, b: RepoStats) -> RepoStats | None:
+    """Who loses the roast battle. Too few commits loses by forfeit; None means a tie or no contest."""
+    small_a, small_b = a.total_commits < MIN_BATTLE_COMMITS, b.total_commits < MIN_BATTLE_COMMITS
+    if small_a != small_b:
+        return a if small_a else b
+    if small_a or crime_score(a) == crime_score(b):
+        return None
+    return a if crime_score(a) > crime_score(b) else b
+
+
+def battle_line(a: RepoStats, b: RepoStats, spice: Spice = "medium", seed: int | str | None = None) -> str:
+    """The verdict joke. Same stats + same seed always gives the same line."""
+    rng = random.Random(seed if seed is not None else f"{a.repo}:{a.total_commits}:{b.total_commits}")
+    loser = battle_loser(a, b)
+    if not a.total_commits and not b.total_commits:
+        return "Zero commits from both of you. A roast battle between nobodies. Bold strategy."
+    if loser is None:
+        table, loser, winner = (BATTLE_NO_CONTEST if a.total_commits < MIN_BATTLE_COMMITS else BATTLE_TIE), b, a
+    else:
+        winner = b if loser is a else a
+        table = BATTLE_FORFEIT if loser.total_commits < MIN_BATTLE_COMMITS else BATTLE
+    n = loser.total_commits
+    return rng.choice(table[spice]).format(
+        **loser.model_dump(),
+        loser=loser.author_filter,
+        winner=winner.author_filter,
+        commits=f"{n} commit{'' if n == 1 else 's'}",
+    )
+
+
+def battle_card(
+    a: RepoStats,
+    b: RepoStats,
+    worst_a: list[WorstCommit],
+    worst_b: list[WorstCommit],
+    spice: Spice = "medium",
+    seed: int | str | None = None,
+) -> str:
+    def worst(ws: list[WorstCommit]) -> str:
+        if not ws:
+            return "(none)"
+        msg = ws[0].message
+        return f"{ws[0].sha} '{msg[:20]}…'" if len(msg) > 20 else f"{ws[0].sha} {msg!r}"
+
+    flame = {"gentle": "🕯️", "medium": "🔥", "brutal": "🌋"}[spice]
+    rows = [
+        ("", a.author_filter or "", b.author_filter or ""),
+        ("commits", str(a.total_commits), str(b.total_commits)),
+        ("night owl", f"{a.night_owl_pct}%", f"{b.night_owl_pct}%"),
+        ("lazy messages", f"{a.lazy_message_pct}%", f"{b.lazy_message_pct}%"),
+        ("worst commit", worst(worst_a), worst(worst_b)),
+    ]
+    w0, w1, w2 = (max(len(r[i]) for r in rows) for i in range(3))
+    out = [f"{flame} roast battle: {a.repo}", ""]
+    out += [f"{label:<{w0}}  {x:<{w1}}  {y:<{w2}}".rstrip() for label, x, y in rows]
+    loser = battle_loser(a, b)
+    if loser:
+        verdict = loser.author_filter
+    elif a.total_commits < MIN_BATTLE_COMMITS:
+        verdict = "nobody (not enough commits)"
+    else:
+        verdict = "nobody (tie)"
+    out += ["", f"loser: {verdict}"]
+    out.append(f"• {battle_line(a, b, spice, seed)}")
+    return "\n".join(out)

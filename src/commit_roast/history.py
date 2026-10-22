@@ -118,7 +118,8 @@ def read_commits(
         f"--format=%H{FIELD}%an{FIELD}%ae{FIELD}%aI{FIELD}%B{RECORD}",
     ]
     if author:
-        cmd.append(f"--author={author}")
+        # git matches --author case-sensitively by default; nobody remembers if it's Dhruv or dhruv.
+        cmd += [f"--author={author}", "--regexp-ignore-case"]
     if limit:
         cmd.append(f"-n{limit}")
     if since:

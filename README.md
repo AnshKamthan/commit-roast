@@ -4,7 +4,7 @@ ok so it's 12:30am, i don't want to study, everything is boring, and i didn't wa
 
 it finds your 3am commits, your four `fix`es in a row, the commit called `final final` and the revert of it two hours later. then it roasts you about it. you get to pick how much it hurts.
 
-is it useful? no. does it have tests? yes, 48 of them. priorities.
+is it useful? no. does it have tests? yes, a suspicious number of them. priorities.
 
 ```text
 $ commit-roast ~/code/tachi-but-worse --spice brutal
@@ -50,6 +50,7 @@ commit-roast . --spice gentle           # 🕯️ gentle, 🔥 medium (default),
 commit-roast . --seed 7                 # same crimes, different jokes
 commit-roast . --since "3 months ago"   # only recent crimes (--until works too)
 commit-roast . --author ansh            # roast one specific person
+commit-roast . --vs ansh dhruv          # roast battle. two enter, one gets roasted
 commit-roast . --json                   # just the numbers, no feelings involved
 ```
 

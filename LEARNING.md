@@ -103,3 +103,21 @@ The `roast` prompt points the model at both.
 **Where to look:** `signals()`, `jokes()`, `SIGNALS_MD` in `server.py`. `test_mcp_resources` in the tests.
 
 **Try this:** run `npx @modelcontextprotocol/inspector commit-roast serve` (the official MCP Inspector) and click through Tools, Resources and Prompts. That is exactly what any MCP client sees.
+
+---
+
+## 6. Roast battle: `--vs alice bob`
+
+**What changed.** `commit-roast . --vs alice bob` puts two authors side by side (commits, night-owl %, lazy-message %, worst commit) and names a loser, with a joke at the current `--spice`. Authors are matched exactly like `--author`.
+
+**Concepts**
+
+- **Reuse the pipeline, don't fork it.** A battle is just the normal pipeline run twice: `read_commits(path, author)` → `compute_stats` → `worst_commits`, once per side. No new git code, no new stats. The only new logic is `battle_loser()` (higher night-owl % + lazy % loses) and a table of verdict jokes.
+- **Edge cases are part of the rules.** What if it's a dead tie? Those get their own small tables (`BATTLE_FORFEIT`, `BATTLE_NO_CONTEST`, `BATTLE_TIE`) rather than `if`s buried inside a joke, so the same "every template formats" test covers them too.
+- **Sample size matters, even in a joke.** One commit at 2am is "100% night owl". Percentages over tiny samples are noise, so below `MIN_BATTLE_COMMITS` (5) there's no verdict on the numbers: the small side forfeits, and if both are small it's no contest.
+- **git defaults to case-sensitive, so we pass `-i`.** Git matches `--author` as a case-sensitive regex against `Name <email>`, so `--author ANSH` found nothing when the commits said `ansh` (found while writing the tests). `read_commits()` adds `--regexp-ignore-case` whenever an author is set, so `--author` and `--vs` both get it.
+- **Flags that contradict each other should fail loudly.** `--vs` with `--author` has no sensible meaning, so `p.error()` rejects it with a message instead of quietly picking one.
+
+**Where to look:** `battle_loser()`, `battle_card()`, `BATTLE`, `MIN_BATTLE_COMMITS` in `roasts.py`, `read_commits()` in `history.py`, `battle()` in `cli.py`, the `test_*battle*` tests.
+
+**Try this:** run `commit-roast . --vs you a-coworker --json` on a shared repo, then change `crime_score()` to also count `final_mentions` and see whether the loser changes.

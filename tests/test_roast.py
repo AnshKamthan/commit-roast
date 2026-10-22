@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -19,7 +20,19 @@ from commit_roast.history import (
     read_commits,
     worst_commits,
 )
-from commit_roast.roasts import CLEAN, ROASTS, SPICES, roast_card, roast_lines
+from commit_roast.roasts import (
+    BATTLE,
+    BATTLE_FORFEIT,
+    BATTLE_NO_CONTEST,
+    BATTLE_TIE,
+    CLEAN,
+    ROASTS,
+    SPICES,
+    battle_card,
+    battle_loser,
+    roast_card,
+    roast_lines,
+)
 from commit_roast.server import mcp
 
 # (ISO author date with offset, message, author)
@@ -85,6 +98,11 @@ def test_author_filter(repo: Path):
     s = compute_stats(read_commits(repo, author="dhruv"), "repo", "dhruv")
     assert s.total_commits == 1
     assert s.night_owl_pct == 0.0
+
+
+def test_author_filter_ignores_case(repo: Path):
+    assert len(read_commits(repo, author="DHRUV")) == 1
+    assert len(read_commits(repo, author="Ansh@Example")) == 9
 
 
 @pytest.mark.parametrize("msg", ["fix", "Fix!", "wip", "minor fixes", "update", "...", "asdf"])
@@ -342,3 +360,69 @@ def test_signals_resource_documents_every_stat():
     for field in RepoStats.model_fields:
         if field not in undocumented:
             assert f"| {field} |" in SIGNALS_MD, f"{field} is missing from commit-roast://signals"
+
+
+def test_battle_loser_is_the_bigger_criminal():
+    guilty = _everything_stats().model_copy(update={"author_filter": "guilty"})
+    clean = guilty.model_copy(update={"author_filter": "clean", "night_owl_pct": 0.0, "lazy_message_pct": 0.0})
+    assert battle_loser(guilty, clean) is guilty
+    assert battle_loser(clean, guilty) is guilty
+    assert battle_loser(clean, clean) is None
+    assert "loser: nobody (tie)" in battle_card(clean, clean, [], [])
+
+
+def test_battle_too_few_commits_is_a_forfeit_not_a_verdict(repo: Path):
+    ansh = compute_stats(read_commits(repo, author="ansh"), "repo", "ansh")
+    dhruv = compute_stats(read_commits(repo, author="dhruv"), "repo", "dhruv")
+    # ansh is the bigger criminal, but dhruv's 1 clean commit is a sample size of one.
+    assert battle_loser(ansh, dhruv) is dhruv
+    card = battle_card(ansh, dhruv, [], [], "medium")
+    verdict = card.splitlines()[-1]
+    assert "loser: dhruv" in card
+    assert "forfeit" in verdict
+    assert "1 commit" in verdict and "1 commits" not in verdict
+
+
+def test_battle_both_small_is_no_contest(repo: Path):
+    dhruv = compute_stats(read_commits(repo, author="dhruv"), "repo", "dhruv")
+    ghost = compute_stats([], "repo", "ghost")
+    assert battle_loser(dhruv, ghost) is None
+    assert "loser: nobody (not enough commits)" in battle_card(dhruv, ghost, [], [])
+
+
+def test_cli_battle(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--vs", "ansh", "dhruv", "--spice", "brutal"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("🌋 roast battle")
+    rows = {line.split("  ")[0]: line.split() for line in out.splitlines() if "  " in line}
+    assert rows["commits"][-2:] == ["9", "1"]
+    assert rows["night owl"][-2:] == ["33.3%", "0.0%"]
+    assert rows["lazy messages"][-2:] == ["55.6%", "0.0%"]
+    assert "'FINAL VERSION FOR RE…'" in out  # ansh's worst, truncated to fit the column
+    assert "(none)" in out  # dhruv has nothing to be ashamed of
+    assert "loser: dhruv" in out  # 1 commit is a forfeit
+    assert out.strip().splitlines()[-1].startswith("• dhruv has 1 commit.")  # brutal forfeit joke
+
+
+def test_cli_battle_matches_like_author(repo: Path, capsys: pytest.CaptureFixture[str]):
+    # Same case-insensitive substring match on name/email as --author.
+    assert main([str(repo), "--vs", "ANSH@example", "Dhr", "--json"]) == 0
+    stats = json.loads(capsys.readouterr().out)
+    assert stats["ANSH@example"]["total_commits"] == 9
+    assert stats["Dhr"]["total_commits"] == 1
+
+
+def test_cli_battle_rejects_author(repo: Path):
+    with pytest.raises(SystemExit):
+        main([str(repo), "--vs", "ansh", "dhruv", "--author", "ansh"])
+
+
+@pytest.mark.parametrize("spice", SPICES)
+def test_every_battle_template_formats(spice: str):
+    s = _everything_stats()
+    for table in (BATTLE, BATTLE_FORFEIT, BATTLE_NO_CONTEST, BATTLE_TIE):
+        for t in table[spice]:
+            line = t.format(**s.model_dump(), loser="alice", winner="bob", commits="3 commits")
+            assert "{" not in line and "alice" in line
+            fields = re.findall(r"\{(\w+)", t)
+            assert len(fields) == len(set(fields)), f"looks like two jokes merged: {t}"
