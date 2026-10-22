@@ -9,6 +9,7 @@ from typing import Literal
 from .history import RepoStats, WorstCommit
 
 Spice = Literal["gentle", "medium", "brutal"]
+BattleReason = Literal["numbers", "forfeit", "no-contest", "tie"]
 SPICES: tuple[Spice, ...] = ("gentle", "medium", "brutal")
 
 
@@ -313,17 +314,24 @@ def battle_loser(a: RepoStats, b: RepoStats) -> RepoStats | None:
     return a if crime_score(a) > crime_score(b) else b
 
 
+def battle_reason(a: RepoStats, b: RepoStats) -> BattleReason:
+    """Why battle_loser() decided what it did."""
+    loser = battle_loser(a, b)
+    if loser is None:
+        return "no-contest" if a.total_commits < MIN_BATTLE_COMMITS else "tie"
+    return "forfeit" if loser.total_commits < MIN_BATTLE_COMMITS else "numbers"
+
+
 def battle_line(a: RepoStats, b: RepoStats, spice: Spice = "medium", seed: int | str | None = None) -> str:
     """The verdict joke. Same stats + same seed always gives the same line."""
     rng = random.Random(seed if seed is not None else f"{a.repo}:{a.total_commits}:{b.total_commits}")
-    loser = battle_loser(a, b)
     if not a.total_commits and not b.total_commits:
         return "Zero commits from both of you. A roast battle between nobodies. Bold strategy."
-    if loser is None:
-        table, loser, winner = (BATTLE_NO_CONTEST if a.total_commits < MIN_BATTLE_COMMITS else BATTLE_TIE), b, a
-    else:
-        winner = b if loser is a else a
-        table = BATTLE_FORFEIT if loser.total_commits < MIN_BATTLE_COMMITS else BATTLE
+    loser = battle_loser(a, b) or b
+    winner = b if loser is a else a
+    table = {"numbers": BATTLE, "forfeit": BATTLE_FORFEIT, "no-contest": BATTLE_NO_CONTEST, "tie": BATTLE_TIE}[
+        battle_reason(a, b)
+    ]
     n = loser.total_commits
     return rng.choice(table[spice]).format(
         **loser.model_dump(),
@@ -359,12 +367,11 @@ def battle_card(
     out = [f"{flame} roast battle: {a.repo}", ""]
     out += [f"{label:<{w0}}  {x:<{w1}}  {y:<{w2}}".rstrip() for label, x, y in rows]
     loser = battle_loser(a, b)
-    if loser:
-        verdict = loser.author_filter
-    elif a.total_commits < MIN_BATTLE_COMMITS:
-        verdict = "nobody (not enough commits)"
-    else:
-        verdict = "nobody (tie)"
+    verdict = (
+        loser.author_filter
+        if loser
+        else {"no-contest": "nobody (not enough commits)", "tie": "nobody (tie)"}[battle_reason(a, b)]
+    )
     out += ["", f"loser: {verdict}"]
     out.append(f"• {battle_line(a, b, spice, seed)}")
     return "\n".join(out)

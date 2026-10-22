@@ -121,3 +121,22 @@ The `roast` prompt points the model at both.
 **Where to look:** `battle_loser()`, `battle_card()`, `BATTLE`, `MIN_BATTLE_COMMITS` in `roasts.py`, `read_commits()` in `history.py`, `battle()` in `cli.py`, the `test_*battle*` tests.
 
 **Try this:** run `commit-roast . --vs you a-coworker --json` on a shared repo, then change `crime_score()` to also count `final_mentions` and see whether the loser changes.
+
+
+---
+
+## 7. Roast battles over MCP
+
+**What changed.** The server has a `roast_battle` tool (both authors' stats, their crime scores, the loser, and a `reason`: `numbers`, `forfeit`, `no-contest` or `tie`) and a `battle` prompt that tells the model to call it and roast at a given intensity. `commit-roast://signals` now explains crime scores and every verdict reason.
+
+**Concepts**
+
+- **The server decides, the model performs.** The verdict comes from the same `battle_loser()` the CLI uses, and the prompt tells the model to announce that loser rather than pick its own. Otherwise ask twice and you might get two different losers. Deterministic rules on the server, comedy in the model: same split as #0.
+- **Return the *why*, not just the *what*.** A bare `loser: "dhruv"` invites the model to invent a reason ("dhruv's messages are terrible!") when the real one is "dhruv has 1 commit". `reason` plus the crime scores give it the true story to tell. Structured output is also a way of steering what the model says.
+- **One source of truth for the rules.** `battle_reason()` lives next to `battle_loser()` in `roasts.py`, and both the CLI card and the MCP tool use it. The `BattleReason` `Literal` becomes an enum in the tool's output schema, so clients know the four possible values up front.
+- **Docs that can't drift, again.** `test_signals_resource_documents_every_battle_reason` loops over `get_args(BattleReason)`. Add a fifth reason and forget the docs, and CI goes red, same trick as in #5.
+
+**Where to look:** `roast_battle()`, `RoastBattle`, `battle()` in `server.py`, `battle_reason()` in `roasts.py`, `test_mcp_roast_battle`.
+
+**Try this:** in the MCP Inspector (`npx @modelcontextprotocol/inspector commit-roast serve`), call `roast_battle` on a repo of yours and look at the output schema: `reason` shows up as an enum of four strings.
+\n

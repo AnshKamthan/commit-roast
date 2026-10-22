@@ -187,7 +187,7 @@ def test_mcp_tools_and_prompt(repo: Path):
     async def run():
         async with Client(mcp) as client:
             tools = {t.name for t in (await client.list_tools()).tools}
-            assert tools == {"commit_stats", "worst_commits"}
+            assert tools == {"commit_stats", "worst_commits", "roast_battle"}
 
             stats = await client.call_tool("commit_stats", {"repo_path": str(repo)})
             assert not stats.is_error
@@ -426,3 +426,69 @@ def test_every_battle_template_formats(spice: str):
             assert "{" not in line and "alice" in line
             fields = re.findall(r"\{(\w+)", t)
             assert len(fields) == len(set(fields)), f"looks like two jokes merged: {t}"
+
+
+def test_mcp_roast_battle(repo: Path):
+    async def battle(a: str, b: str, **kw: str) -> dict:
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "roast_battle", {"repo_path": str(repo), "author_a": a, "author_b": b, **kw}
+            )
+            assert not result.is_error
+            return result.structured_content
+
+    async def run():
+        # ansh (9 commits, 88.9) vs everyone (10 commits, 80.0): a real verdict on the numbers.
+        r = await battle("ansh", "example.com")
+        assert (r["loser"], r["reason"]) == ("ansh", "numbers")
+        assert r["author_a"]["total_commits"] == 9
+        assert r["author_b"]["total_commits"] == 10
+        assert r["crime_score_a"] == pytest.approx(88.9)
+        assert r["crime_score_b"] == pytest.approx(80.0)
+
+        r = await battle("ANSH", "Dhruv")  # case-insensitive, like --vs
+        assert (r["loser"], r["reason"]) == ("Dhruv", "forfeit")
+
+        r = await battle("ansh", "ansh")
+        assert (r["loser"], r["reason"]) == (None, "tie")
+
+        r = await battle("ansh", "dhruv", since="2026-04-01")  # 1 commit each
+        assert (r["loser"], r["reason"]) == (None, "no-contest")
+
+    anyio.run(run)
+
+
+def test_mcp_roast_battle_bad_repo_is_a_tool_error(tmp_path: Path):
+    async def run():
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "roast_battle", {"repo_path": str(tmp_path), "author_a": "a", "author_b": "b"}
+            )
+            assert result.is_error
+
+    anyio.run(run)
+
+
+def test_mcp_battle_prompt():
+    async def run():
+        async with Client(mcp) as client:
+            prompts = {p.name for p in (await client.list_prompts()).prompts}
+            assert prompts == {"roast", "battle"}
+            prompt = await client.get_prompt(
+                "battle", {"repo_path": "/r", "author_a": "ansh", "author_b": "dhruv", "intensity": "brutal"}
+            )
+            text = prompt.messages[0].content.text
+            assert "roast_battle" in text and "'brutal'" in text
+            assert "author_a='ansh'" in text and "author_b='dhruv'" in text
+
+    anyio.run(run)
+
+
+def test_signals_resource_documents_every_battle_reason():
+    from typing import get_args
+
+    from commit_roast.roasts import BattleReason
+    from commit_roast.server import SIGNALS_MD
+
+    for reason in get_args(BattleReason):
+        assert f"| {reason} |" in SIGNALS_MD, f"battle reason {reason} is missing from commit-roast://signals"

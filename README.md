@@ -87,9 +87,11 @@ what the server gives it:
 |---|---|---|
 | tool | `commit_stats` | all the numbers above |
 | tool | `worst_commits` | the hall of shame, with reasons |
+| tool | `roast_battle` | two authors side by side, plus who lost and why |
 | resource | `commit-roast://signals` | what every number means |
 | resource | `commit-roast://jokes/{spice}` | my jokes, as a style guide |
 | prompt | `roast` | "roast this repo, cite real commits, don't make stuff up" |
+| prompt | `battle` | "roast these two against each other. the tool picks the loser, not you" |
 
 want to poke at it without an AI? `npx @modelcontextprotocol/inspector commit-roast serve`
 
