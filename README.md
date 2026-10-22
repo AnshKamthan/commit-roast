@@ -96,6 +96,34 @@ what the server gives it:
 
 want to poke at it without an AI? `npx @modelcontextprotocol/inspector commit-roast serve`
 
+## github action
+
+roast every PR automatically. it posts a comment roasting just that PR's commits, in markdown, so it looks nice. your teammates will love it (they will not love it).
+
+```yaml
+# .github/workflows/roast-pr.yml
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  contents: read
+  pull-requests: write   # so it can comment
+
+jobs:
+  roast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed! it has to see where your branch started
+      - uses: AnshKamthan/commit-roast@main
+        with:
+          spice: gentle    # it's a PR, be nice. or don't
+```
+
+PRs from forks get a read-only token, so they can't be roasted. lucky them.
+
 ## LEARNING.md
 
 the actual reason i kept going past 1am: every commit has a note in [LEARNING.md](LEARNING.md) about what i figured out while building it. two of them are real bugs i hit along the way: `git log --since` lying about dates, and a missing comma that quietly glued two jokes together. future me will thank me. probably.

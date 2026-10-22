@@ -1,0 +1,51 @@
+name: commit-roast
+description: Roast a pull request's commits in a PR comment.
+author: Ansh Kamthan
+branding:
+  icon: git-commit
+  color: orange
+
+inputs:
+  spice:
+    description: "How hard to roast: gentle, medium or brutal."
+    default: gentle
+  github-token:
+    description: Token used to post the comment. Needs pull-requests write permission.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+
+    - name: Roast the PR's commits
+      shell: bash
+      # Inputs go through env, never straight into the script, so nothing in them can run as shell.
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        SPICE: ${{ inputs.spice }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        if [ -z "$PR_NUMBER" ]; then
+          echo "::error::commit-roast only works on pull_request events"
+          exit 1
+        fi
+        if ! base=$(git merge-base "$BASE_SHA" "$HEAD_SHA" 2>/dev/null); then
+          echo "::error::can't find where this PR branched off. Check out with fetch-depth: 0"
+          exit 1
+        fi
+        # git's --since is inclusive, so start one second after the base commit.
+        since="@$(( $(git show -s --format=%ct "$base") + 1 ))"
+
+        # actions/checkout puts a test merge commit at HEAD, whose history includes the base branch's newer
+        # commits too. Roast a worktree at the PR head instead, named after the repo for the comment heading.
+        head_dir="$RUNNER_TEMP/commit-roast/${GITHUB_REPOSITORY#*/}"
+        git worktree add -q --detach "$head_dir" "$HEAD_SHA"
+        trap 'git worktree remove --force "$head_dir"' EXIT
+
+        # The action's own checkout, with its locked dependencies. (Not uvx: it can reuse a stale cached build.)
+        uv run -q --project "$GITHUB_ACTION_PATH" --no-dev commit-roast "$head_dir" \
+          --since "$since" --spice "$SPICE" --format markdown > "$RUNNER_TEMP/roast.md"
+        gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/roast.md"

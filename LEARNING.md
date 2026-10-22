@@ -158,3 +158,23 @@ The `roast` prompt points the model at both.
 
 **Try this:** run `commit-roast . --format markdown | pbcopy` (macOS) and paste it into a GitHub comment's Preview tab. Then make a commit with a `|` in its message and paste again.
 \n
+
+---
+
+## 9. A GitHub Action that roasts every PR
+
+**What changed.** `action.yml` at the repo root makes commit-roast a reusable GitHub Action: `uses: AnshKamthan/commit-roast@main` posts a markdown roast of a PR's commits as a comment. `.github/workflows/roast-pr.yml` runs it on this repo's own PRs.
+
+**Concepts**
+
+- **Composite actions.** There are three kinds of action: JavaScript, Docker, and *composite*, which is just a list of steps, like a mini workflow you can `uses:`. Ours is `using: composite`. Gotchas: every `run:` step must say `shell: bash` (there's no default), a step can `uses:` other actions (we pull in `setup-uv`), and `$GITHUB_ACTION_PATH` points at the action's own files. That's how it runs *this* commit-roast, not whatever is on PyPI.
+- **PR events check out a commit that doesn't exist in your branch.** On `pull_request`, `actions/checkout` checks out `refs/pull/N/merge`, a test merge of the PR into its base. Walk back from there and you also reach every newer commit on `main`, so the roast would blame the PR author for other people's commits. The action reads `pull_request.base.sha` and `head.sha` from the event and roasts a `git worktree` at the real head, which leaves the user's checkout alone. Checking out with the default `fetch-depth: 1` gives you a single commit, so `git merge-base` can't find where the branch started. Hence `fetch-depth: 0` in the example.
+- **`--since` is inclusive (found while testing this).** `--since <base commit's time>` also includes the base commit itself, which isn't part of the PR. The action passes the base's timestamp plus one second, as `@<unix seconds>`, a format git accepts directly. It's a time filter, not a commit range, so it's approximate: if `main` was merged *into* the PR branch, those `main` commits are newer than the base and get roasted too.
+- **`GITHUB_TOKEN` permissions.** Every run gets a short-lived token, and the `permissions:` block says what it may do. Ask for the least you need: `contents: read` to check out, `pull-requests: write` to comment. On PRs from *forks* the token is read-only no matter what you ask for, because otherwise anyone could open a PR that rewrites your workflow to abuse a write token. So the workflow skips fork PRs (`if: head.repo.full_name == github.repository`). The usual way around this, `pull_request_target`, runs with a write token *and* untrusted PR code. That's a well-known way to get a repo owned, so we don't use it.
+- **Never paste `${{ }}` into a script.** `${{ inputs.spice }}` inside `run:` is pasted in as text *before* bash runs, so a crafted value becomes shell code. Pass it through `env:` and use `"$SPICE"`, and it's just a string.
+- **uvx caches builds (found while testing this).** `uvx --from <path>` reused an old build of commit-roast, because uv decides when to rebuild a local project from `pyproject.toml`, and only `src/` had changed. The action uses `uv run --project "$GITHUB_ACTION_PATH"` instead, which installs the project in editable mode (always the current source) with dependencies from `uv.lock`.
+
+**Where to look:** `action.yml`, `.github/workflows/roast-pr.yml`.
+
+**Try this:** open a PR against this repo with a commit called `fix`. Then look at the run's "Set up job" log, which lists exactly which permissions the `GITHUB_TOKEN` got.
+

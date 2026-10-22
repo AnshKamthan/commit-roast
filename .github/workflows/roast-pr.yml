@@ -1,0 +1,23 @@
+name: Roast PR
+
+on:
+  pull_request:
+    # Once per PR, not on every push, so the comments don't pile up.
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  roast:
+    # PRs from forks get a read-only GITHUB_TOKEN and can't comment, so don't even try.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./
+        with:
+          spice: medium
