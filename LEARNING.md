@@ -78,3 +78,28 @@ No code, just honesty about what the project is. A README that says *why* is a b
 **Where to look:** `ROASTS`, `roast_lines()` in `roasts.py`. `test_every_template_formats`, `test_no_template_swallowed_another`.
 
 **Try this:** add a brutal joke for `reverts`, run `commit-roast . --spice brutal --seed 1` and `--seed 2` until you see it. Then delete one comma in the table and run `uv run pytest`.
+
+---
+
+## 5. MCP resources: the third primitive
+
+**What changed.** The server now exposes two **resources**:
+- `commit-roast://signals`: a markdown table defining every stat.
+- `commit-roast://jokes/{spice}`: the offline joke templates for a spice level, as a style guide for the model.
+
+The `roast` prompt points the model at both.
+
+**Concepts**
+
+- **The three MCP primitives and who's in charge of each.**
+  - **Tools** are *model-controlled*: the model decides to call `commit_stats`. They *do* something (run git) and take arguments.
+  - **Resources** are *application-controlled*: data the client can list, read, and attach as context. Think "files the model can be shown", addressed by URI. No side effects.
+  - **Prompts** are *user-controlled*: templates the user picks from a menu (`/roast` in some clients).
+
+  The question for any new feature: who should decide when it's used? The model (tool), the app or user attaching context (resource), or the user starting a workflow (prompt)?
+- **Static vs templated resources.** `commit-roast://signals` is one fixed URI and shows up in `list_resources()`. `commit-roast://jokes/{spice}` is a *template*, which shows up in `list_resource_templates()`, and the client fills in `{spice}`. Same idea as a REST route with a path parameter.
+- **Docs that can't drift.** `test_signals_resource_documents_every_stat` walks `RepoStats.model_fields` and fails if a stat isn't explained in the resource. Add a field and forget the docs, and CI goes red. Cheap trick, very effective.
+
+**Where to look:** `signals()`, `jokes()`, `SIGNALS_MD` in `server.py`. `test_mcp_resources` in the tests.
+
+**Try this:** run `npx @modelcontextprotocol/inspector commit-roast serve` (the official MCP Inspector) and click through Tools, Resources and Prompts. That is exactly what any MCP client sees.

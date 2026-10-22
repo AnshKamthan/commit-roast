@@ -297,3 +297,48 @@ def test_no_template_swallowed_another():
                 # Two glued jokes repeat their number ("{night_owl_pct}% ... {night_owl_pct}% ...").
                 fields = re.findall(r"\{(\w+)", t)
                 assert len(fields) == len(set(fields)), f"looks like two jokes merged: {t}"
+
+
+def test_mcp_resources():
+    from mcp.types import TextResourceContents
+
+    async def run():
+        async with Client(mcp) as client:
+            uris = [str(r.uri) for r in (await client.list_resources()).resources]
+            assert uris == ["commit-roast://signals"]
+            templates = [t.uri_template for t in (await client.list_resource_templates()).resource_templates]
+            assert templates == ["commit-roast://jokes/{spice}"]
+
+            signals = (await client.read_resource("commit-roast://signals")).contents[0]
+            assert isinstance(signals, TextResourceContents)
+            assert "novelist_commits" in signals.text
+
+            brutal = (await client.read_resource("commit-roast://jokes/brutal")).contents[0]
+            assert isinstance(brutal, TextResourceContents)
+            assert "ransom note" in brutal.text
+
+    anyio.run(run)
+
+
+def test_signals_resource_documents_every_stat():
+    """If you add a stat to RepoStats, this fails until the resource explains it."""
+    from commit_roast.server import SIGNALS_MD
+
+    undocumented = {
+        "repo",
+        "author_filter",
+        "total_commits",
+        "authors",
+        "first_commit",
+        "last_commit",
+        "busiest_hour",
+        "busiest_day",
+        "commits_by_hour",
+        "median_message_length",
+        "shortest_messages",
+        "most_repeated_count",
+        "almost_conventional_examples",
+    }
+    for field in RepoStats.model_fields:
+        if field not in undocumented:
+            assert f"| {field} |" in SIGNALS_MD, f"{field} is missing from commit-roast://signals"
