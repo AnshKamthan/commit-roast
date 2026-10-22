@@ -1,4 +1,4 @@
-# commit-roast 🔥
+# commit-roast 🔥 ;p
 
 ok so it's 12:30am, i don't want to study, everything is boring, and i didn't want to watch netflix either. so i built a thing that reads your git history and makes fun of you.
 
