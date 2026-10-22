@@ -139,4 +139,22 @@ The `roast` prompt points the model at both.
 **Where to look:** `roast_battle()`, `RoastBattle`, `battle()` in `server.py`, `battle_reason()` in `roasts.py`, `test_mcp_roast_battle`.
 
 **Try this:** in the MCP Inspector (`npx @modelcontextprotocol/inspector commit-roast serve`), call `roast_battle` on a repo of yours and look at the output schema: `reason` shows up as an enum of four strings.
+
+
+---
+
+## 8. `--format markdown`: roasts that paste into GitHub
+
+**What changed.** `--format markdown` prints a GitHub-friendly version of the roast card and the battle card: a heading, a stats table, bullet roasts, and the hall of shame as a table with SHAs in backticks. `--format text` (the default) is unchanged. Works with `--vs` too.
+
+**Concepts**
+
+- **Same data, second renderer.** The stats, jokes and verdict don't change at all. `roast_card_markdown()` and `battle_card_markdown()` take exactly the same arguments as the text versions, and the CLI just picks one. Keeping "what to say" (`roast_lines`, `battle_line`, `_verdict`) apart from "how to lay it out" is what makes a second format cheap.
+- **Commit messages are untrusted input.** Anyone can write a commit message, and markdown will happily render it. `fix @dhruv's bug` would ping dhruv, `<details>` would swallow half the comment, and `a | b` would add a column to the table. So in tables, messages go inside code spans (no markup, no mentions), and in roast lines markup characters get a backslash (`_md()`). One gap left on purpose: `_md()` doesn't touch `@`, so a roast line quoting a repeated `@someone` message could still ping them.
+- **The pipe gotcha.** In a GitHub table, `|` ends the cell *even inside backticks*. You have to write `\\|`, which GitHub renders as a plain `|`. A message containing a backtick needs a longer fence: ``` `` use `x` `` ```.
+- **Test the shape, not just the strings.** `_assert_tables_are_well_formed` counts the unescaped pipes in every table row and checks they match the header. That catches every way a hostile message could break a table, not just the ones I thought of.
+
+**Where to look:** `roast_card_markdown()`, `battle_card_markdown()`, `_md()`, `_md_code()` in `roasts.py`, `test_markdown_survives_hostile_commit_messages`.
+
+**Try this:** run `commit-roast . --format markdown | pbcopy` (macOS) and paste it into a GitHub comment's Preview tab. Then make a commit with a `|` in its message and paste again.
 \n

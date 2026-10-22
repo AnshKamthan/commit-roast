@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from .history import GitError, compute_stats, read_commits, worst_commits
-from .roasts import SPICES, battle_card, roast_card
+from .roasts import FORMATS, SPICES, battle_card, battle_card_markdown, roast_card, roast_card_markdown
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,9 +28,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-s", "--spice", choices=SPICES, default="medium", help="how hard to roast (default: medium)")
     p.add_argument("--seed", type=int, help="pick a different set of jokes (same seed, same roast)")
     p.add_argument("--json", action="store_true", help="print raw stats as JSON instead of a roast")
+    p.add_argument(
+        "--format", choices=FORMATS, default="text", help="text, or markdown for a GitHub comment (default: text)"
+    )
     args = p.parse_args(argv)
     if args.vs and args.author:
         p.error("--vs and --author don't mix: --vs already picks the authors")
+    if args.json and args.format != "text":
+        p.error("--json and --format don't mix: pick numbers or a roast")
     if args.vs:
         return battle(args)
 
@@ -46,7 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")
-        print(roast_card(stats, worst_commits(commits), args.spice, args.seed))
+        card = roast_card_markdown if args.format == "markdown" else roast_card
+        print(card(stats, worst_commits(commits), args.spice, args.seed))
     return 0
 
 
@@ -64,7 +70,8 @@ def battle(args: argparse.Namespace) -> int:
     else:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")
-        print(battle_card(a, b, worst_commits(sides[0]), worst_commits(sides[1]), args.spice, args.seed))
+        card = battle_card_markdown if args.format == "markdown" else battle_card
+        print(card(a, b, worst_commits(sides[0]), worst_commits(sides[1]), args.spice, args.seed))
     return 0
 
 

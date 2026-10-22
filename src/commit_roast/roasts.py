@@ -10,6 +10,9 @@ from .history import RepoStats, WorstCommit
 
 Spice = Literal["gentle", "medium", "brutal"]
 BattleReason = Literal["numbers", "forfeit", "no-contest", "tie"]
+Format = Literal["text", "markdown"]
+FORMATS: tuple[Format, ...] = ("text", "markdown")
+FLAME: dict[Spice, str] = {"gentle": "🕯️", "medium": "🔥", "brutal": "🌋"}
 SPICES: tuple[Spice, ...] = ("gentle", "medium", "brutal")
 
 
@@ -235,8 +238,7 @@ def roast_lines(s: RepoStats, spice: Spice = "medium", seed: int | str | None = 
 
 def roast_card(s: RepoStats, worst: list[WorstCommit], spice: Spice = "medium", seed: int | str | None = None) -> str:
     who = f" ({s.author_filter})" if s.author_filter else ""
-    flame = {"gentle": "🕯️", "medium": "🔥", "brutal": "🌋"}[spice]
-    out = [f"{flame} commit-roast: {s.repo}{who}", ""]
+    out = [f"{FLAME[spice]} commit-roast: {s.repo}{who}", ""]
     if s.total_commits:
         span = f"{s.first_commit:%b %Y} → {s.last_commit:%b %Y}"
         out.append(f"{s.total_commits} commits · {s.authors} author(s) · {span}")
@@ -355,7 +357,6 @@ def battle_card(
         msg = ws[0].message
         return f"{ws[0].sha} '{msg[:20]}…'" if len(msg) > 20 else f"{ws[0].sha} {msg!r}"
 
-    flame = {"gentle": "🕯️", "medium": "🔥", "brutal": "🌋"}[spice]
     rows = [
         ("", a.author_filter or "", b.author_filter or ""),
         ("commits", str(a.total_commits), str(b.total_commits)),
@@ -364,14 +365,89 @@ def battle_card(
         ("worst commit", worst(worst_a), worst(worst_b)),
     ]
     w0, w1, w2 = (max(len(r[i]) for r in rows) for i in range(3))
-    out = [f"{flame} roast battle: {a.repo}", ""]
+    out = [f"{FLAME[spice]} roast battle: {a.repo}", ""]
     out += [f"{label:<{w0}}  {x:<{w1}}  {y:<{w2}}".rstrip() for label, x, y in rows]
-    loser = battle_loser(a, b)
-    verdict = (
-        loser.author_filter
-        if loser
-        else {"no-contest": "nobody (not enough commits)", "tie": "nobody (tie)"}[battle_reason(a, b)]
-    )
-    out += ["", f"loser: {verdict}"]
+    out += ["", f"loser: {_verdict(a, b)}"]
     out.append(f"• {battle_line(a, b, spice, seed)}")
+    return "\n".join(out)
+
+
+def _verdict(a: RepoStats, b: RepoStats) -> str:
+    loser = battle_loser(a, b)
+    if loser:
+        return loser.author_filter or ""
+    return {"no-contest": "nobody (not enough commits)", "tie": "nobody (tie)"}[battle_reason(a, b)]
+
+
+# Markdown versions, for pasting into a GitHub comment. Commit messages and names are untrusted text:
+# in tables they go in code spans (no markup, no @mentions), and everywhere else markup characters are escaped.
+MD_SPECIAL = "\\`*_[]<>|~"
+
+
+def _md(text: str) -> str:
+    return "".join(f"\\{ch}" if ch in MD_SPECIAL else ch for ch in text)
+
+
+def _md_code(text: str, limit: int = 50) -> str:
+    text = f"{text[:limit]}…" if len(text) > limit else text
+    # A pipe ends the table cell even inside a code span unless escaped. Backticks need a longer fence.
+    text = text.replace("|", "\\|")
+    return f"`` {text} ``" if "`" in text else f"`{text}`"
+
+
+def _md_table(header: list[str], rows: list[list[str]]) -> list[str]:
+    return [f"| {' | '.join(header)} |", f"|{'---|' * len(header)}", *(f"| {' | '.join(r)} |" for r in rows)]
+
+
+def roast_card_markdown(
+    s: RepoStats, worst: list[WorstCommit], spice: Spice = "medium", seed: int | str | None = None
+) -> str:
+    who = f" ({_md(s.author_filter)})" if s.author_filter else ""
+    out = [f"## {FLAME[spice]} commit-roast: {_md(s.repo)}{who}", ""]
+    if s.total_commits:
+        out += _md_table(
+            ["stat", "value"],
+            [
+                ["commits", str(s.total_commits)],
+                ["authors", str(s.authors)],
+                ["span", f"{s.first_commit:%b %Y} → {s.last_commit:%b %Y}"],
+                ["busiest day", str(s.busiest_day)],
+                ["busiest hour", _hour(s.busiest_hour)],
+                ["night owl", f"{s.night_owl_pct}%"],
+                ["lazy messages", f"{s.lazy_message_pct}%"],
+            ],
+        )
+        out += ["", "```text", _sparkline(s.commits_by_hour), "12am  6am   12pm  6pm", "```", ""]
+    out += [f"- {_md(line)}" for line in roast_lines(s, spice, seed)]
+    if worst:
+        out += ["", "### Hall of shame", ""]
+        out += _md_table(
+            ["sha", "message", "why"],
+            [[f"`{w.sha}`", _md_code(w.message), _md(", ".join(w.reasons))] for w in worst[:5]],
+        )
+    return "\n".join(out)
+
+
+def battle_card_markdown(
+    a: RepoStats,
+    b: RepoStats,
+    worst_a: list[WorstCommit],
+    worst_b: list[WorstCommit],
+    spice: Spice = "medium",
+    seed: int | str | None = None,
+) -> str:
+    def worst(ws: list[WorstCommit]) -> str:
+        return f"`{ws[0].sha}` {_md_code(ws[0].message)}" if ws else "(none)"
+
+    out = [f"## {FLAME[spice]} roast battle: {_md(a.repo)}", ""]
+    out += _md_table(
+        ["", _md(a.author_filter or ""), _md(b.author_filter or "")],
+        [
+            ["commits", str(a.total_commits), str(b.total_commits)],
+            ["night owl", f"{a.night_owl_pct}%", f"{b.night_owl_pct}%"],
+            ["lazy messages", f"{a.lazy_message_pct}%", f"{b.lazy_message_pct}%"],
+            ["worst commit", worst(worst_a), worst(worst_b)],
+        ],
+    )
+    out += ["", f"**loser: {_md(_verdict(a, b))}**", "", f"- {_md(battle_line(a, b, spice, seed))}"]
     return "\n".join(out)

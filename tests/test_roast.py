@@ -29,8 +29,10 @@ from commit_roast.roasts import (
     ROASTS,
     SPICES,
     battle_card,
+    battle_card_markdown,
     battle_loser,
     roast_card,
+    roast_card_markdown,
     roast_lines,
 )
 from commit_roast.server import mcp
@@ -492,3 +494,80 @@ def test_signals_resource_documents_every_battle_reason():
 
     for reason in get_args(BattleReason):
         assert f"| {reason} |" in SIGNALS_MD, f"battle reason {reason} is missing from commit-roast://signals"
+
+
+def _assert_tables_are_well_formed(md: str):
+    """Every row of a markdown table has as many cells as its header (escaped pipes don't count)."""
+    widths = None
+    for line in md.splitlines() + [""]:
+        if line.startswith("|"):
+            cells = len(re.findall(r"(?<!\\)\|", line))
+            widths = widths or cells
+            assert cells == widths, f"row has the wrong number of cells: {line}"
+        else:
+            widths = None
+
+
+def test_cli_markdown_roast(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--format", "markdown"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("## 🔥 commit-roast:")
+    assert "| commits | 10 |" in out
+    assert "| night owl | 30.0% |" in out
+    assert re.search(r"^- .*Narrator: they were not final\.$", out, re.MULTILINE)
+    assert "•" not in out
+    assert "### Hall of shame" in out
+    assert "| sha | message | why |" in out
+    assert re.search(r"^\| `[0-9a-f]{7}` \| `FINAL VERSION FOR REAL` \| ", out, re.MULTILINE)
+    _assert_tables_are_well_formed(out)
+
+
+def test_cli_markdown_battle(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--vs", "ansh", "dhruv", "--format", "markdown"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("## 🔥 roast battle:")
+    assert "|  | ansh | dhruv |" in out
+    assert "| commits | 9 | 1 |" in out
+    assert "| lazy messages | 55.6% | 0.0% |" in out
+    assert re.search(r"\| worst commit \| `[0-9a-f]{7}` `FINAL VERSION FOR REAL` \| \(none\) \|", out)
+    assert "**loser: dhruv**" in out
+    assert "1 commit" in out.strip().splitlines()[-1]  # a forfeit joke, not a verdict on the numbers
+    _assert_tables_are_well_formed(out)
+
+
+def test_cli_text_is_still_the_default(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--format", "text"]) == 0
+    text = capsys.readouterr().out
+    assert main([str(repo)]) == 0
+    assert capsys.readouterr().out == text
+    assert text.startswith("🔥 commit-roast:") and "##" not in text
+
+
+def test_cli_json_and_markdown_dont_mix(repo: Path):
+    with pytest.raises(SystemExit):
+        main([str(repo), "--json", "--format", "markdown"])
+
+
+def test_markdown_survives_hostile_commit_messages():
+    from datetime import datetime
+
+    from commit_roast.history import WorstCommit
+
+    when = datetime.fromisoformat("2026-02-03T02:00:00+05:30")
+    worst = [
+        WorstCommit(sha="aaaaaaa", when=when, message="a | b | c", reasons=["shouting"]),
+        WorstCommit(sha="bbbbbbb", when=when, message="use `x` @dhruv", reasons=["a revert"]),
+        WorstCommit(sha="ccccccc", when=when, message="x" * 80, reasons=["80-character subject line"]),
+    ]
+    s = _everything_stats().model_copy(
+        update={"most_repeated_message": "fix_it <b>", "first_commit": when, "last_commit": when}
+    )
+    md = roast_card_markdown(s, worst, "gentle")
+    assert "`a \\| b \\| c`" in md  # pipes escaped so the cell doesn't split
+    assert "`` use `x` @dhruv ``" in md  # backticks get a longer fence; the mention stays inert in code
+    assert f"`{'x' * 50}…`" in md
+    assert "fix\\_it \\<b\\>" in md  # markup in a roast line is escaped, not rendered
+    _assert_tables_are_well_formed(md)
+
+    pipe = s.model_copy(update={"author_filter": "a|b"})
+    _assert_tables_are_well_formed(battle_card_markdown(pipe, pipe, worst, [], "brutal"))

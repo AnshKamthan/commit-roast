@@ -52,6 +52,7 @@ commit-roast . --since "3 months ago"   # only recent crimes (--until works too)
 commit-roast . --author ansh            # roast one specific person
 commit-roast . --vs ansh dhruv          # roast battle. two enter, one gets roasted
 commit-roast . --json                   # just the numbers, no feelings involved
+commit-roast . --format markdown        # paste it straight into the PR. let the whole team see
 ```
 
 same repo + same seed = same roast, so the screenshot you post is the one everyone else gets.
