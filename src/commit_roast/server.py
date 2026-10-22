@@ -17,29 +17,37 @@ def _name(repo_path: str) -> str:
 
 
 @mcp.tool()
-def commit_stats(repo_path: str, author: str | None = None) -> RepoStats:
+def commit_stats(
+    repo_path: str, author: str | None = None, since: str | None = None, until: str | None = None
+) -> RepoStats:
     """Habits mined from a git repo's history: late-night commits, lazy messages, repeated
     messages, 'final' claims, gaps and streaks. Times are in each author's own timezone.
 
     Args:
         repo_path: Path to a local git repository.
         author: Optional substring of author name or email, to roast one person only.
+        since: Optional start, anything git understands ("2026-01-01", "3 months ago").
+        until: Optional end, same formats.
     """
     path = str(Path(repo_path).expanduser())
-    return compute_stats(read_commits(path, author), _name(path), author)
+    return compute_stats(read_commits(path, author, since=since, until=until), _name(path), author)
 
 
 @mcp.tool()
-def worst_commits(repo_path: str, author: str | None = None, limit: int = 10) -> list[WorstCommit]:
+def worst_commits(
+    repo_path: str, author: str | None = None, limit: int = 10, since: str | None = None, until: str | None = None
+) -> list[WorstCommit]:
     """The most roastable individual commits, each with the reasons it made the list.
 
     Args:
         repo_path: Path to a local git repository.
         author: Optional substring of author name or email.
         limit: How many to return.
+        since: Optional start, anything git understands.
+        until: Optional end.
     """
     path = str(Path(repo_path).expanduser())
-    return rank_worst(read_commits(path, author), limit)
+    return rank_worst(read_commits(path, author, since=since, until=until), limit)
 
 
 @mcp.prompt()

@@ -21,11 +21,13 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="commit-roast", description="Roast a git repo's commit history.")
     p.add_argument("path", nargs="?", default=".", help="git repo to roast (default: current directory)")
     p.add_argument("-a", "--author", help="only commits whose author name/email contains this")
+    p.add_argument("--since", help='only commits after this, e.g. "2026-01-01" or "3 months ago"')
+    p.add_argument("--until", help='only commits before this, e.g. "last friday"')
     p.add_argument("--json", action="store_true", help="print raw stats as JSON instead of a roast")
     args = p.parse_args(argv)
 
     try:
-        commits = read_commits(args.path, args.author)
+        commits = read_commits(args.path, args.author, since=args.since, until=args.until)
     except GitError as e:
         print(f"commit-roast: {e}", file=sys.stderr)
         return 1

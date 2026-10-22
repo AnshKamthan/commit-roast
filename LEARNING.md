@@ -24,3 +24,20 @@ One entry per commit: what changed, the idea behind it, where to look, and one s
 ## 1. "Why this exists" + this file
 
 No code, just honesty about what the project is. A README that says *why* is a better signal than one that pretends a weekend toy is enterprise software.
+
+---
+
+## 2. Friendlier errors + `--since` / `--until`
+
+**What changed.** A missing folder now says `no such directory`, a non-repo says `isn't a git repo`, and an empty repo is "zero commits" rather than a crash. You can roast a time window: `commit-roast . --since "3 months ago"`.
+
+**Concepts**
+
+- **Translate errors at the boundary.** `git` speaks in `fatal: cannot change to ...`. The user shouldn't have to. `read_commits()` is the one place that talks to git, so it's the one place that turns git's errors into ours (`GitError`). Everything above it gets one clean exception type.
+- **Locale is part of your input.** We match on git's English error text. On a machine with a non-English locale, git would translate those messages and the checks would silently fail. So the subprocess runs with `LC_ALL=C`. If you ever parse another program's output, pin its locale.
+- **The bare-date gotcha (found while writing the tests).** `git log --since=2026-01-07` does **not** mean midnight. Git fills in the *current time of day*, so at 7:27pm it means "Jan 7, 7:27pm" and quietly drops anything earlier that day. No error, just wrong results. `_day_bound()` pins bare `YYYY-MM-DD` dates to `00:00:00` (since) / `23:59:59` (until). Relative dates like "3 months ago" pass through untouched.
+- **Write the test you think is obvious.** The date bug only surfaced because a "trivially correct" test failed. That's the whole argument for testing boring code.
+
+**Where to look:** `read_commits()` and `_day_bound()` in `history.py`, `test_since_and_until` and `test_bare_until_date_includes_the_whole_day`.
+
+**Try this:** in any repo, compare `git log --since=YESTERDAY_DATE --oneline | wc -l` with `git log --since="YESTERDAY_DATE 00:00" --oneline | wc -l` (put in yesterday's real date) in the evening. Watch the numbers differ.

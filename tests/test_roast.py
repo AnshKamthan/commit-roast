@@ -8,6 +8,7 @@ from mcp import Client
 
 from commit_roast.cli import main
 from commit_roast.history import GitError, compute_stats, is_lazy, is_shouty, read_commits, worst_commits
+from commit_roast.roasts import roast_card
 from commit_roast.server import mcp
 
 # (ISO author date with offset, message, author)
@@ -106,8 +107,33 @@ def test_worst_commits_ranked_by_number_of_reasons(repo: Path):
 
 
 def test_not_a_repo_raises(tmp_path: Path):
-    with pytest.raises(GitError):
+    with pytest.raises(GitError, match="isn't a git repo"):
         read_commits(tmp_path)
+
+
+def test_missing_directory_raises(tmp_path: Path):
+    with pytest.raises(GitError, match="no such directory"):
+        read_commits(tmp_path / "path/to/any/personal/repo")
+
+
+def test_empty_repo_is_zero_commits_not_an_error(tmp_path: Path):
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    assert read_commits(tmp_path) == []
+    assert "Zero commits" in roast_card(compute_stats([], "empty"), [])
+
+
+def test_since_and_until(repo: Path):
+    assert len(read_commits(repo, since="2026-04-01")) == 2
+    assert len(read_commits(repo, until="2026-01-06T12:00:00+05:30")) == 4
+    assert len(read_commits(repo, since="2026-01-07", until="2026-01-10T00:00:00+05:30")) == 3
+
+
+def test_bare_until_date_includes_the_whole_day(repo: Path):
+    # Without pinning, git would cut "2026-01-09" off at the current time of day.
+    assert [c.message for c in read_commits(repo, since="2026-01-09", until="2026-01-09")] == [
+        "final version",
+        "FINAL VERSION FOR REAL",
+    ]
 
 
 def test_cli_prints_a_roast(repo: Path, capsys: pytest.CaptureFixture[str]):
@@ -120,7 +146,12 @@ def test_cli_prints_a_roast(repo: Path, capsys: pytest.CaptureFixture[str]):
 
 def test_cli_on_non_repo_fails_cleanly(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     assert main([str(tmp_path)]) == 1
-    assert "commit-roast:" in capsys.readouterr().err
+    assert "isn't a git repo" in capsys.readouterr().err
+
+
+def test_cli_since_flag(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--since", "2026-04-01"]) == 0
+    assert "2 commits" in capsys.readouterr().out
 
 
 def test_mcp_tools_and_prompt(repo: Path):

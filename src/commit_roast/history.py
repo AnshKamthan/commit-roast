@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections import Counter
@@ -26,6 +27,7 @@ LAZY_PATTERNS = [
 ]
 FINAL_RE = re.compile(r"\bfinal\b", re.IGNORECASE)
 REVERT_RE = re.compile(r"^revert\b", re.IGNORECASE)
+BARE_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -75,16 +77,27 @@ class GitError(RuntimeError):
     """Raised when the path isn't a git repo or git itself fails."""
 
 
-def read_commits(repo_path: str | Path, author: str | None = None, limit: int | None = None) -> list[Commit]:
-    """Return non-merge commits, oldest first.
+def read_commits(
+    repo_path: str | Path,
+    author: str | None = None,
+    limit: int | None = None,
+    since: str | None = None,
+    until: str | None = None,
+) -> list[Commit]:
+    """Return non-merge commits, oldest first. A repo with no commits yet returns [].
+
+    `since` / `until` take anything `git log` understands: "2026-01-01", "3 months ago", "last friday".
 
     Raises:
-        GitError: if `repo_path` is not a git repository or `git log` fails.
+        GitError: if `repo_path` doesn't exist, isn't a git repository, or `git log` fails.
     """
+    path = Path(repo_path).expanduser()
+    if not path.is_dir():
+        raise GitError(f"no such directory: {path}")
     cmd = [
         "git",
         "-C",
-        str(repo_path),
+        str(path),
         "log",
         "--no-merges",
         f"--format=%H{FIELD}%an{FIELD}%ae{FIELD}%aI{FIELD}%B{RECORD}",
@@ -93,12 +106,25 @@ def read_commits(repo_path: str | Path, author: str | None = None, limit: int | 
         cmd.append(f"--author={author}")
     if limit:
         cmd.append(f"-n{limit}")
+    if since:
+        cmd.append(f"--since={_day_bound(since, '00:00:00')}")
+    if until:
+        cmd.append(f"--until={_day_bound(until, '23:59:59')}")
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout
+        # LC_ALL=C keeps git's error messages in English so the checks below work on any locale.
+        env = {**os.environ, "LC_ALL": "C"}
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True, env=env
+        ).stdout
     except FileNotFoundError as e:
         raise GitError("git is not installed") from e
     except subprocess.CalledProcessError as e:
-        raise GitError(e.stderr.strip() or f"git log failed in {repo_path}") from e
+        err = e.stderr.strip()
+        if "does not have any commits yet" in err:
+            return []
+        if "not a git repository" in err:
+            raise GitError(f"{path} isn't a git repo (no .git here or in any parent folder)") from e
+        raise GitError(err or f"git log failed in {path}") from e
 
     commits = []
     for rec in out.split(RECORD):
@@ -111,6 +137,12 @@ def read_commits(repo_path: str | Path, author: str | None = None, limit: int | 
         )
     commits.reverse()
     return commits
+
+
+def _day_bound(when: str, clock: str) -> str:
+    """git reads a bare date like "2026-01-07" as that date at the *current time of day*.
+    Pin bare dates to the start (or end) of the day so --since/--until mean whole days."""
+    return f"{when} {clock}" if BARE_DATE_RE.fullmatch(when.strip()) else when
 
 
 def is_shouty(subject_line: str) -> bool:
