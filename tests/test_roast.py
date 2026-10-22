@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from mcp import Client
 from commit_roast.cli import main
 from commit_roast.history import (
     GitError,
+    RepoStats,
     compute_stats,
     is_almost_conventional,
     is_conventional,
@@ -17,7 +19,7 @@ from commit_roast.history import (
     read_commits,
     worst_commits,
 )
-from commit_roast.roasts import roast_card, roast_lines
+from commit_roast.roasts import CLEAN, ROASTS, SPICES, roast_card, roast_lines
 from commit_roast.server import mcp
 
 # (ISO author date with offset, message, author)
@@ -227,3 +229,71 @@ def test_new_signals_in_stats():
     assert s.apology_commits == 2
     assert s.novelist_commits == 1
     assert "*almost* follow Conventional Commits" in "\n".join(roast_lines(s))
+
+
+def _everything_stats() -> RepoStats:
+    """Stats that trip every roast at once, so every template gets exercised."""
+    return RepoStats(
+        repo="r",
+        author_filter=None,
+        total_commits=50,
+        authors=1,
+        first_commit=None,
+        last_commit=None,
+        night_owl_pct=40.0,
+        weekend_pct=50.0,
+        friday_evening_commits=5,
+        busiest_hour=3,
+        busiest_day="Friday",
+        commits_by_hour=[1] * 24,
+        lazy_message_pct=60.0,
+        median_message_length=4.0,
+        shortest_messages=["."],
+        most_repeated_message="fix",
+        most_repeated_count=9,
+        final_mentions=4,
+        reverts=5,
+        shouty_commits=3,
+        longest_gap_days=120.5,
+        longest_daily_streak=12,
+        conventional_pct=10.0,
+        almost_conventional=3,
+        almost_conventional_examples=["feature: x"],
+        apology_commits=4,
+        novelist_commits=6,
+    )
+
+
+@pytest.mark.parametrize("spice", SPICES)
+def test_every_template_formats(spice: str):
+    s = _everything_stats()
+    ctx = {**s.model_dump(), "ex": "feature: x", "hour": "3am"}
+    for _, templates in ROASTS:
+        for t in templates[spice]:
+            assert "{" not in t.format(**ctx)
+    for t in CLEAN[spice]:
+        t.format(**ctx)
+
+
+def test_same_seed_same_roast_different_spice_different_roast():
+    s = _everything_stats()
+    assert roast_lines(s, "medium", seed=1) == roast_lines(s, "medium", seed=1)
+    assert roast_lines(s, "gentle") != roast_lines(s, "brutal")
+    assert any("ransom note" in line or "paying per letter" in line for line in roast_lines(s, "brutal"))
+
+
+def test_cli_spice(repo: Path, capsys: pytest.CaptureFixture[str]):
+    assert main([str(repo), "--spice", "brutal"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("🌋")
+    assert "The word has lost all meaning" in out
+
+
+def test_no_template_swallowed_another():
+    """Guards against a missing comma silently gluing two jokes into one string."""
+    for _, templates in ROASTS:
+        for spice_templates in templates.values():
+            for t in spice_templates:
+                # Two glued jokes repeat their number ("{night_owl_pct}% ... {night_owl_pct}% ...").
+                fields = re.findall(r"\{(\w+)", t)
+                assert len(fields) == len(set(fields)), f"looks like two jokes merged: {t}"

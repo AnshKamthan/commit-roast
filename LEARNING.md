@@ -61,3 +61,20 @@ No code, just honesty about what the project is. A README that says *why* is a b
 **Where to look:** `CONVENTIONAL_RE`, `ALMOST_CONVENTIONAL_RE`, `is_almost_conventional()` in `history.py`. The parametrized tests at the bottom of `tests/test_roast.py`.
 
 **Try this:** paste `ALMOST_CONVENTIONAL_RE` into regex101.com (Python flavor) and find a message that's *almost* conventional but slips through. Then add it as a test case.
+
+---
+
+## 4. Spice levels: `--spice gentle | medium | brutal`
+
+**What changed.** Every roast now has gentle, medium and brutal versions, some with several variants. `--seed` picks a different set of jokes. 🕯️ / 🔥 / 🌋 in the header tells you which mode you're in.
+
+**Concepts**
+
+- **Data over code.** Before, every joke was an `if` + `append`. Now `ROASTS` is a *table*: (condition, {spice: [templates]}). Adding a joke means adding data, not logic, and a test can loop over the whole table (`test_every_template_formats`) to check that every template renders for every spice. You couldn't do that with 40 hand-written `if`s.
+- **Deterministic randomness.** Randomness and tests don't mix unless you control the seed. `random.Random(seed)` gives an isolated generator: same seed, same jokes, every run, every machine. With no `--seed`, we seed from `"{repo}:{total_commits}"`, so a repo gets a stable roast until you commit more. Gotcha: Python's built-in `hash()` of a string changes on every run (hash randomization, a security feature), but `random.Random("some string")` is stable, because `random` hashes strings with SHA-512 internally.
+- **The missing-comma bug (this really happened while writing this commit).** In Python, `["a" "b"]` is *one* string, `"ab"`, because adjacent string literals get glued together silently. A dropped comma in the joke table merged two jokes into one long line. No error, no crash. Ruff's `ISC004` rule flagged it ("implicit string concatenation in a collection"), and `test_no_template_swallowed_another` now guards it: two glued jokes each repeat their number placeholder, so a template with a duplicate `{field}` fails. The test was checked by deliberately dropping a comma and watching it fail.
+- **When you *want* concatenation**, wrap it in parentheses so it's obviously intentional: `("long joke part one " "part two")`.
+
+**Where to look:** `ROASTS`, `roast_lines()` in `roasts.py`. `test_every_template_formats`, `test_no_template_swallowed_another`.
+
+**Try this:** add a brutal joke for `reverts`, run `commit-roast . --spice brutal --seed 1` and `--seed 2` until you see it. Then delete one comma in the table and run `uv run pytest`.
