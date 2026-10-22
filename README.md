@@ -100,6 +100,8 @@ want to poke at it without an AI? `npx @modelcontextprotocol/inspector commit-ro
 
 roast every PR automatically. it posts a comment roasting just that PR's commits, in markdown, so it looks nice. your teammates will love it (they will not love it).
 
+see it roast a real PR: [#1](https://github.com/AnshKamthan/commit-roast/pull/1).
+
 ```yaml
 # .github/workflows/roast-pr.yml
 on:
@@ -126,7 +128,7 @@ PRs from forks get a read-only token, so they can't be roasted. lucky them.
 
 ## LEARNING.md
 
-the actual reason i kept going past 1am: every commit has a note in [LEARNING.md](LEARNING.md) about what i figured out while building it. two of them are real bugs i hit along the way: `git log --since` lying about dates, and a missing comma that quietly glued two jokes together. future me will thank me. probably.
+the actual reason i kept going past 1am: every commit has a note in [LEARNING.md](LEARNING.md) about what i figured out while building it. a bunch of them are real bugs i hit along the way, like `git log --since` lying about dates, and a missing comma that quietly glued two jokes together. future me will thank me. probably.
 
 ## dev
 
