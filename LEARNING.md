@@ -41,3 +41,23 @@ No code, just honesty about what the project is. A README that says *why* is a b
 **Where to look:** `read_commits()` and `_day_bound()` in `history.py`, `test_since_and_until` and `test_bare_until_date_includes_the_whole_day`.
 
 **Try this:** in any repo, compare `git log --since=YESTERDAY_DATE --oneline | wc -l` with `git log --since="YESTERDAY_DATE 00:00" --oneline | wc -l` (put in yesterday's real date) in the evening. Watch the numbers differ.
+
+---
+
+## 3. New crimes: almost-conventional, apologies, novelists
+
+**What changed.** Three new signals:
+- **Almost-conventional**: `feature: x`, `fixed: y`, `fix : z`, `feat(api) no colon`. People clearly *trying* to follow [Conventional Commits](https://www.conventionalcommits.org) and missing.
+- **Apologies**: `oops`, `typo`, `forgot`, `sorry`, `actually`.
+- **Novelists**: subject lines over 72 characters.
+
+**Concepts**
+
+- **Conventional Commits** is a tiny spec: `type(scope)!: description`, where `type` is one of a fixed set (`feat`, `fix`, `docs`, `chore`, …). Tools like semantic-release read it to auto-generate changelogs and bump versions: `feat` → minor, `fix` → patch, `!` → major. That's why teams care, not aesthetics.
+- **Types are case-insensitive** per the spec, so `Docs: typo` is valid. Read specs before writing validators; the "obvious" rule is often wrong.
+- **Defining "almost" is the hard part.** A naive "starts with fix" rule would flag `Fix off-by-one in allocator`, which is a perfectly good imperative message. So "almost" requires a signal of *intent*: a separator (`:`, `-`), a scope in parens, or a non-standard type word next to punctuation. The negative tests (`test_plain_messages_are_not_almost_conventional`) matter as much as the positive ones. They pin down what you *don't* want to catch.
+- **Why 72 characters?** Git's tools (and GitHub's UI) truncate or wrap around there, and `git log --oneline` gets unreadable past it. The convention: a short subject, a blank line, then as much detail as you like in the body.
+
+**Where to look:** `CONVENTIONAL_RE`, `ALMOST_CONVENTIONAL_RE`, `is_almost_conventional()` in `history.py`. The parametrized tests at the bottom of `tests/test_roast.py`.
+
+**Try this:** paste `ALMOST_CONVENTIONAL_RE` into regex101.com (Python flavor) and find a message that's *almost* conventional but slips through. Then add it as a test case.

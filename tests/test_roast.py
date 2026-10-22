@@ -7,8 +7,17 @@ import pytest
 from mcp import Client
 
 from commit_roast.cli import main
-from commit_roast.history import GitError, compute_stats, is_lazy, is_shouty, read_commits, worst_commits
-from commit_roast.roasts import roast_card
+from commit_roast.history import (
+    GitError,
+    compute_stats,
+    is_almost_conventional,
+    is_conventional,
+    is_lazy,
+    is_shouty,
+    read_commits,
+    worst_commits,
+)
+from commit_roast.roasts import roast_card, roast_lines
 from commit_roast.server import mcp
 
 # (ISO author date with offset, message, author)
@@ -168,3 +177,53 @@ def test_mcp_tools_and_prompt(repo: Path):
             assert "brutal" in prompt.messages[0].content.text
 
     anyio.run(run)
+
+
+@pytest.mark.parametrize("msg", ["fix: handle empty block table", "feat(scheduler)!: preempt on OOM", "Docs: typo"])
+def test_conventional(msg: str):
+    assert is_conventional(msg)
+    assert not is_almost_conventional(msg)
+
+
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "feature: add sampling",  # not a real type
+        "fixed: race in allocator",  # past tense
+        "fix : spacing before colon",
+        "feat:no space",
+        "feat - dash instead of colon",
+        "feat(api) forgot the colon",
+    ],
+)
+def test_almost_conventional(msg: str):
+    assert is_almost_conventional(msg)
+
+
+@pytest.mark.parametrize("msg", ["Fix off-by-one in block allocator", "Feature flags for tachi", "fix"])
+def test_plain_messages_are_not_almost_conventional(msg: str):
+    assert not is_almost_conventional(msg)
+
+
+def test_new_signals_in_stats():
+    from datetime import datetime
+
+    from commit_roast.history import Commit
+
+    when = datetime.fromisoformat("2026-02-03T12:00:00+05:30")
+    msgs = [
+        "fix: real conventional",
+        "feature: almost",
+        "fixed: also almost",
+        "oops, forgot the file",
+        "typo",
+        "Refactor the entire scheduler so it handles preemption, swapping, and prefix caching in one pass",
+    ]
+    commits = [Commit(sha=f"{i:040x}", author="a", email="a@x", when=when, message=m) for i, m in enumerate(msgs)]
+    s = compute_stats(commits, "r")
+    assert s.conventional_pct == pytest.approx(16.7)
+    assert s.almost_conventional == 2
+    assert s.almost_conventional_examples == ["feature: almost", "fixed: also almost"]
+    assert s.apology_commits == 2
+    assert s.novelist_commits == 1
+    assert "*almost* follow Conventional Commits" in "\n".join(roast_lines(s))

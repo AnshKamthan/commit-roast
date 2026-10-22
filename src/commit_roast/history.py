@@ -27,6 +27,16 @@ LAZY_PATTERNS = [
 ]
 FINAL_RE = re.compile(r"\bfinal\b", re.IGNORECASE)
 REVERT_RE = re.compile(r"^revert\b", re.IGNORECASE)
+# Conventional Commits (conventionalcommits.org): "type(scope)!: description". Types are case-insensitive per the spec.
+CC_TYPES = "feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert"
+CONVENTIONAL_RE = re.compile(rf"^({CC_TYPES})(\([^)]+\))?!?: \S", re.IGNORECASE)
+# Clearly *trying* to be conventional and missing: wrong type word, no space, space before colon, dash, no colon.
+ALMOST_TYPES = CC_TYPES + "|feature|features|fixed|fixes|bugfix|doc|tests|chores"
+ALMOST_CONVENTIONAL_RE = re.compile(
+    rf"^({ALMOST_TYPES})(\([^)]*\))?!?\s*[:\-]\s*\S|^({ALMOST_TYPES})\([^)]*\)\s+\S", re.IGNORECASE
+)
+APOLOGY_RE = re.compile(r"\b(oops+|whoops|sorry|my bad|typo|forgot|actually)\b", re.IGNORECASE)
+NOVEL_LENGTH = 72  # git's long-standing convention for subject lines
 BARE_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -64,6 +74,11 @@ class RepoStats(BaseModel):
     shouty_commits: int = Field(description="Messages that are mostly uppercase or contain '!!'")
     longest_gap_days: float = Field(description="Longest silence between consecutive commits")
     longest_daily_streak: int = Field(description="Most consecutive calendar days with at least one commit")
+    conventional_pct: float = Field(description="% of commits that follow Conventional Commits exactly")
+    almost_conventional: int = Field(description="Commits that try to be Conventional Commits and miss")
+    almost_conventional_examples: list[str]
+    apology_commits: int = Field(description="Messages with oops / sorry / typo / forgot / actually")
+    novelist_commits: int = Field(description=f"Subject lines longer than {NOVEL_LENGTH} characters")
 
 
 class WorstCommit(BaseModel):
@@ -156,6 +171,14 @@ def subject(message: str) -> str:
     return message.splitlines()[0].strip() if message else ""
 
 
+def is_conventional(subject_line: str) -> bool:
+    return bool(CONVENTIONAL_RE.match(subject_line))
+
+
+def is_almost_conventional(subject_line: str) -> bool:
+    return not is_conventional(subject_line) and bool(ALMOST_CONVENTIONAL_RE.match(subject_line))
+
+
 def is_lazy(message: str) -> bool:
     s = subject(message).lower().strip(" !?")
     return any(re.fullmatch(p, s) for p in LAZY_PATTERNS)
@@ -209,6 +232,11 @@ def compute_stats(commits: list[Commit], repo: str, author_filter: str | None = 
         shouty_commits=sum(is_shouty(s) for s in subjects),
         longest_gap_days=round(max(gaps), 1) if gaps else 0.0,
         longest_daily_streak=_longest_streak(commits),
+        conventional_pct=_pct(sum(is_conventional(s) for s in subjects), n),
+        almost_conventional=len(almost := [s for s in subjects if is_almost_conventional(s)]),
+        almost_conventional_examples=almost[:3],
+        apology_commits=sum(bool(APOLOGY_RE.search(s)) for s in subjects),
+        novelist_commits=sum(len(s) > NOVEL_LENGTH for s in subjects),
     )
 
 
@@ -232,6 +260,12 @@ def worst_commits(commits: list[Commit], limit: int = 10) -> list[WorstCommit]:
             reasons.append("a revert")
         if c.when.weekday() == 4 and c.when.hour >= 17:
             reasons.append("Friday evening")
+        if is_almost_conventional(s):
+            reasons.append("almost a Conventional Commit")
+        if APOLOGY_RE.search(s):
+            reasons.append("apologizing to git")
+        if len(s) > NOVEL_LENGTH:
+            reasons.append(f"{len(s)}-character subject line")
         if reasons:
             scored.append((len(reasons), c.when, WorstCommit(sha=c.sha[:7], when=c.when, message=s, reasons=reasons)))
     scored.sort(key=lambda t: (t[0], t[1]), reverse=True)

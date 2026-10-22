@@ -59,6 +59,24 @@ def roast_lines(s: RepoStats) -> list[str]:
     if s.longest_daily_streak >= 7:
         lines.append(f"{s.longest_daily_streak}-day commit streak. Respect. Also, are you okay?")
 
+    if s.almost_conventional >= 2:
+        ex = s.almost_conventional_examples[0]
+        lines.append(
+            f'{s.almost_conventional} commits *almost* follow Conventional Commits ("{ex}"). '
+            "So close. The spec is one page long."
+        )
+    elif s.conventional_pct >= 80:
+        lines.append(f"{s.conventional_pct}% Conventional Commits. Disciplined. Slightly scary.")
+
+    if s.apology_commits >= 2:
+        lines.append(f"{s.apology_commits} commits apologize (oops / typo / forgot). Git is not your therapist.")
+
+    if s.novelist_commits >= 3:
+        lines.append(
+            f"{s.novelist_commits} subject lines over 72 characters. That's not a subject line, "
+            "that's a short story. The commit body exists."
+        )
+
     if s.busiest_hour is not None and not lines:
         lines.append(
             f"Peak hour {_hour(s.busiest_hour)}, decent messages, sane schedule. Suspiciously well-adjusted. What are you hiding?"
